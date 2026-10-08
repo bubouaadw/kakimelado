@@ -2,365 +2,550 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Jogo da Cobrinha</title>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Labirinto Arcade</title>
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       min-height: 100vh;
       margin: 0;
       display: grid;
       place-items: center;
-      background: #101418;
-      color: #f5f5f5;
-      font-family: system-ui, sans-serif;
+      overflow: hidden;
+      background: radial-gradient(circle, #12174a 0%, #050615 65%);
+      color: white;
+      font-family: Arial, sans-serif;
+      user-select: none;
     }
 
-    .jogo {
-      width: min(92vw, 480px);
+    .game {
+      width: min(94vw, 650px);
       text-align: center;
     }
 
     h1 {
-      margin: 0 0 12px;
-      color: #7cff72;
+      margin: 0 0 10px;
+      color: #ffe600;
+      font-size: clamp(28px, 6vw, 48px);
+      text-shadow: 0 0 18px #ff9d00;
     }
 
-    .painel {
+    .hud {
       display: flex;
       justify-content: space-between;
+      gap: 12px;
       margin-bottom: 10px;
-      font-weight: 700;
+      font-weight: bold;
+      font-size: clamp(14px, 3vw, 20px);
+    }
+
+    .board {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 19 / 21;
+      background: #02020c;
+      border: 4px solid #243cff;
+      border-radius: 10px;
+      box-shadow: 0 0 24px #172cff;
+      overflow: hidden;
     }
 
     canvas {
       display: block;
       width: 100%;
-      height: auto;
-      border: 4px solid #29333d;
-      border-radius: 10px;
-      background: #172028;
-      box-shadow: 0 12px 35px #0008;
+      height: 100%;
+      touch-action: none;
     }
 
-    .acoes {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      margin: 14px 0;
+    .message {
+      position: absolute;
+      inset: 0;
+      display: none;
+      place-content: center;
+      padding: 24px;
+      background: rgba(0, 0, 10, .78);
+      font-size: clamp(24px, 6vw, 45px);
+      font-weight: bold;
+      text-shadow: 0 0 12px #000;
     }
+
+    .message.show { display: grid; }
 
     button {
-      min-width: 55px;
-      min-height: 48px;
+      margin-top: 18px;
+      padding: 12px 24px;
       border: 0;
-      border-radius: 10px;
-      background: #29333d;
-      color: white;
-      font-size: 1.1rem;
-      font-weight: 700;
+      border-radius: 999px;
+      background: #ffe600;
+      color: #080814;
+      font: inherit;
+      font-size: 18px;
+      font-weight: bold;
       cursor: pointer;
-      touch-action: manipulation;
+      box-shadow: 0 0 15px #ffb300;
     }
 
-    button:hover {
-      background: #3b4a57;
-    }
-
-    #reiniciar {
-      background: #58d64f;
-      color: #071307;
-      padding: 0 20px;
-    }
-
-    .controles {
-      display: grid;
-      grid-template-columns: repeat(3, 58px);
-      gap: 7px;
-      justify-content: center;
-    }
-
-    .cima {
-      grid-column: 2;
-    }
-
-    .esquerda {
-      grid-column: 1;
-      grid-row: 2;
-    }
-
-    .baixo {
-      grid-column: 2;
-      grid-row: 2;
-    }
-
-    .direita {
-      grid-column: 3;
-      grid-row: 2;
-    }
-
-    .mensagem {
-      min-height: 24px;
-      margin: 12px 0;
-      color: #ffcf5a;
-      font-weight: 700;
-    }
-
-    .instrucao {
-      color: #aebac4;
-      font-size: 0.9rem;
+    .help {
+      margin: 12px 0 0;
+      color: #b8c0ff;
+      font-size: 14px;
     }
   </style>
 </head>
-
 <body>
-  <main class="jogo">
-    <h1>Jogo da Cobrinha</h1>
+  <main class="game">
+    <h1>LABIRINTO ARCADE</h1>
 
-    <div class="painel">
-      <span>Pontos: <strong id="pontos">0</strong></span>
-      <span>Recorde: <strong id="recorde">0</strong></span>
+    <div class="hud">
+      <span>Placar: <b id="score">0</b></span>
+      <span>Vidas: <b id="lives">3</b></span>
+      <span>Fase: <b id="level">1</b></span>
     </div>
 
-    <canvas id="tabuleiro" width="400" height="400"></canvas>
+    <div class="board">
+      <canvas id="canvas"></canvas>
 
-    <p class="mensagem" id="mensagem">
-      Pressione uma direção para começar
-    </p>
-
-    <div class="acoes">
-      <button id="reiniciar">Reiniciar</button>
+      <div id="message" class="message">
+        <div>
+          <div id="messageText"></div>
+          <button id="restart">Jogar novamente</button>
+        </div>
+      </div>
     </div>
 
-    <div class="controles" aria-label="Controles">
-      <button class="cima" data-direcao="cima">▲</button>
-      <button class="esquerda" data-direcao="esquerda">◀</button>
-      <button class="baixo" data-direcao="baixo">▼</button>
-      <button class="direita" data-direcao="direita">▶</button>
-    </div>
-
-    <p class="instrucao">Use as setas, WASD ou os botões.</p>
+    <p class="help">Setas ou WASD - no celular, deslize sobre o jogo</p>
   </main>
 
   <script>
-    const canvas = document.getElementById("tabuleiro");
-    const contexto = canvas.getContext("2d");
-    const pontosElemento = document.getElementById("pontos");
-    const recordeElemento = document.getElementById("recorde");
-    const mensagemElemento = document.getElementById("mensagem");
+    const originalMap = [
+      "###################",
+      "#o.......#.......o#",
+      "#.###.##.#.##.###.#",
+      "#.................#",
+      "#.###.#.###.#.###.#",
+      "#.....#..#..#.....#",
+      "#####.##.#.##.#####",
+      "    #.#.....#.#    ",
+      "#####.#.###.#.#####",
+      "......#.....#......",
+      "#####.#.###.#.#####",
+      "    #.#.....#.#    ",
+      "#####.#.###.#.#####",
+      "#........#........#",
+      "#.###.##.#.##.###.#",
+      "#o..#.........#..o#",
+      "###.#.#.###.#.#.###",
+      "#.....#..#..#.....#",
+      "#.#######.#######.#",
+      "#.................#",
+      "###################"
+    ];
 
-    const tamanhoCelula = 20;
-    const quantidadeCelulas = canvas.width / tamanhoCelula;
-    const velocidade = 110;
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const scoreEl = document.getElementById("score");
+    const livesEl = document.getElementById("lives");
+    const levelEl = document.getElementById("level");
+    const message = document.getElementById("message");
+    const messageText = document.getElementById("messageText");
 
-    let cobra;
-    let comida;
-    let direcao;
-    let proximaDirecao;
-    let pontos;
-    let intervalo;
-    let jogando;
-    let recorde = Number(localStorage.getItem("recordeCobrinha")) || 0;
-
-    recordeElemento.textContent = recorde;
-
-    function iniciarJogo() {
-      cobra = [
-        { x: 10, y: 10 },
-        { x: 9, y: 10 },
-        { x: 8, y: 10 }
-      ];
-
-      direcao = { x: 0, y: 0 };
-      proximaDirecao = { x: 0, y: 0 };
-      pontos = 0;
-      jogando = false;
-
-      clearInterval(intervalo);
-      pontosElemento.textContent = pontos;
-      mensagemElemento.textContent = "Pressione uma direção para começar";
-
-      criarComida();
-      desenhar();
-    }
-
-    function criarComida() {
-      do {
-        comida = {
-          x: Math.floor(Math.random() * quantidadeCelulas),
-          y: Math.floor(Math.random() * quantidadeCelulas)
-        };
-      } while (
-        cobra.some(parte => parte.x === comida.x && parte.y === comida.y)
-      );
-    }
-
-    function mudarDirecao(novaDirecao) {
-      const direcoes = {
-        cima: { x: 0, y: -1 },
-        baixo: { x: 0, y: 1 },
-        esquerda: { x: -1, y: 0 },
-        direita: { x: 1, y: 0 }
-      };
-
-      const nova = direcoes[novaDirecao];
-      if (!nova) return;
-
-      const estaInvertendo =
-        nova.x === -direcao.x &&
-        nova.y === -direcao.y &&
-        cobra.length > 1;
-
-      if (estaInvertendo) return;
-
-      proximaDirecao = nova;
-
-      if (!jogando) {
-        jogando = true;
-        mensagemElemento.textContent = "";
-        intervalo = setInterval(atualizar, velocidade);
-      }
-    }
-
-    function atualizar() {
-      direcao = proximaDirecao;
-
-      const novaCabeca = {
-        x: cobra[0].x + direcao.x,
-        y: cobra[0].y + direcao.y
-      };
-
-      const saiuDoTabuleiro =
-        novaCabeca.x < 0 ||
-        novaCabeca.x >= quantidadeCelulas ||
-        novaCabeca.y < 0 ||
-        novaCabeca.y >= quantidadeCelulas;
-
-      const bateuNaCobra = cobra.some(
-        parte => parte.x === novaCabeca.x && parte.y === novaCabeca.y
-      );
-
-      if (saiuDoTabuleiro || bateuNaCobra) {
-        finalizarJogo();
-        return;
-      }
-
-      cobra.unshift(novaCabeca);
-
-      const comeu =
-        novaCabeca.x === comida.x &&
-        novaCabeca.y === comida.y;
-
-      if (comeu) {
-        pontos++;
-        pontosElemento.textContent = pontos;
-        criarComida();
-      } else {
-        cobra.pop();
-      }
-
-      desenhar();
-    }
-
-    function desenhar() {
-      contexto.fillStyle = "#172028";
-      contexto.fillRect(0, 0, canvas.width, canvas.height);
-
-      desenharGrade();
-
-      contexto.fillStyle = "#ff4f64";
-      contexto.beginPath();
-      contexto.arc(
-        comida.x * tamanhoCelula + tamanhoCelula / 2,
-        comida.y * tamanhoCelula + tamanhoCelula / 2,
-        tamanhoCelula / 2 - 2,
-        0,
-        Math.PI * 2
-      );
-      contexto.fill();
-
-      cobra.forEach((parte, indice) => {
-        contexto.fillStyle = indice === 0 ? "#a2ff73" : "#54d653";
-
-        contexto.fillRect(
-          parte.x * tamanhoCelula + 1,
-          parte.y * tamanhoCelula + 1,
-          tamanhoCelula - 2,
-          tamanhoCelula - 2
-        );
-      });
-    }
-
-    function desenharGrade() {
-      contexto.strokeStyle = "#1e2a33";
-      contexto.lineWidth = 1;
-
-      for (let i = 0; i <= canvas.width; i += tamanhoCelula) {
-        contexto.beginPath();
-        contexto.moveTo(i, 0);
-        contexto.lineTo(i, canvas.height);
-        contexto.stroke();
-
-        contexto.beginPath();
-        contexto.moveTo(0, i);
-        contexto.lineTo(canvas.width, i);
-        contexto.stroke();
-      }
-    }
-
-    function finalizarJogo() {
-      clearInterval(intervalo);
-      jogando = false;
-
-      if (pontos > recorde) {
-        recorde = pontos;
-        localStorage.setItem("recordeCobrinha", recorde);
-        recordeElemento.textContent = recorde;
-      }
-
-      mensagemElemento.textContent =
-        `Fim de jogo! Você fez ${pontos} ponto${pontos === 1 ? "" : "s"}.`;
-    }
-
-    const teclas = {
-      ArrowUp: "cima",
-      w: "cima",
-      W: "cima",
-      ArrowDown: "baixo",
-      s: "baixo",
-      S: "baixo",
-      ArrowLeft: "esquerda",
-      a: "esquerda",
-      A: "esquerda",
-      ArrowRight: "direita",
-      d: "direita",
-      D: "direita"
+    const COLS = originalMap[0].length;
+    const ROWS = originalMap.length;
+    const directions = {
+      left:  { x: -1, y: 0 },
+      right: { x: 1, y: 0 },
+      up:    { x: 0, y: -1 },
+      down:  { x: 0, y: 1 }
     };
 
-    document.addEventListener("keydown", evento => {
-      const novaDirecao = teclas[evento.key];
+    let map, tile, score, lives, level, running;
+    let player, ghosts, lastTime, frightenedUntil;
 
-      if (novaDirecao) {
-        evento.preventDefault();
-        mudarDirecao(novaDirecao);
+    function resize() {
+      const board = canvas.parentElement;
+      const rect = board.getBoundingClientRect();
+      canvas.width = Math.floor(rect.width * devicePixelRatio);
+      canvas.height = Math.floor(rect.height * devicePixelRatio);
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      tile = rect.width / COLS;
+    }
+
+    function makeActor(x, y, color, direction = "left") {
+      return {
+        x, y,
+        startX: x,
+        startY: y,
+        dir: direction,
+        nextDir: direction,
+        progress: 0,
+        color
+      };
+    }
+
+    function resetActors() {
+      player = makeActor(9, 15, "#ffe600", "left");
+      ghosts = [
+        makeActor(9, 9, "#ff355e", "left"),
+        makeActor(8, 9, "#ff8de5", "right"),
+        makeActor(10, 9, "#35e9ff", "left"),
+        makeActor(9, 11, "#ff9f31", "right")
+      ];
+      frightenedUntil = 0;
+    }
+
+    function newGame() {
+      map = originalMap.map(row => row.split(""));
+      score = 0;
+      lives = 3;
+      level = 1;
+      running = true;
+      resetActors();
+      updateHud();
+      message.classList.remove("show");
+      lastTime = performance.now();
+    }
+
+    function updateHud() {
+      scoreEl.textContent = score;
+      livesEl.textContent = lives;
+      levelEl.textContent = level;
+    }
+
+    function isWall(x, y) {
+      if (y < 0 || y >= ROWS) return true;
+      if (x < 0 || x >= COLS) return false;
+      return map[y][x] === "#";
+    }
+
+    function wrap(actor) {
+      if (actor.x < 0) actor.x = COLS - 1;
+      if (actor.x >= COLS) actor.x = 0;
+    }
+
+    function canMove(actor, dirName) {
+      const d = directions[dirName];
+      return !isWall(actor.x + d.x, actor.y + d.y);
+    }
+
+    function moveActor(actor, speed, dt, isPlayer = false) {
+      if (actor.progress === 0) {
+        if (isPlayer && canMove(actor, actor.nextDir)) {
+          actor.dir = actor.nextDir;
+        }
+
+        if (!isPlayer) chooseGhostDirection(actor);
+        if (!canMove(actor, actor.dir)) return;
+      }
+
+      actor.progress += speed * dt;
+
+      while (actor.progress >= 1) {
+        const d = directions[actor.dir];
+        actor.x += d.x;
+        actor.y += d.y;
+        wrap(actor);
+        actor.progress -= 1;
+
+        if (isPlayer) {
+          eatTile();
+
+          if (canMove(actor, actor.nextDir)) {
+            actor.dir = actor.nextDir;
+          }
+        } else {
+          chooseGhostDirection(actor);
+        }
+
+        if (!canMove(actor, actor.dir)) {
+          actor.progress = 0;
+          break;
+        }
+      }
+    }
+
+    function chooseGhostDirection(ghost) {
+      const opposite = {
+        left: "right",
+        right: "left",
+        up: "down",
+        down: "up"
+      };
+
+      let options = Object.keys(directions).filter(name =>
+        canMove(ghost, name) && name !== opposite[ghost.dir]
+      );
+
+      if (!options.length) {
+        options = Object.keys(directions).filter(name => canMove(ghost, name));
+      }
+
+      const frightened = performance.now() < frightenedUntil;
+
+      options.sort((a, b) => {
+        const da = distanceAfterMove(ghost, a);
+        const db = distanceAfterMove(ghost, b);
+        return frightened ? db - da : da - db;
+      });
+
+      ghost.dir = Math.random() < 0.7
+        ? options[0]
+        : options[Math.floor(Math.random() * options.length)];
+    }
+
+    function distanceAfterMove(actor, direction) {
+      const d = directions[direction];
+      return Math.hypot(
+        actor.x + d.x - player.x,
+        actor.y + d.y - player.y
+      );
+    }
+
+    function eatTile() {
+      const cell = map[player.y]?.[player.x];
+
+      if (cell === ".") {
+        map[player.y][player.x] = " ";
+        score += 10;
+      } else if (cell === "o") {
+        map[player.y][player.x] = " ";
+        score += 50;
+        frightenedUntil = performance.now() + 7000;
+      }
+
+      updateHud();
+
+      const pelletsLeft = map.some(row =>
+        row.some(cell => cell === "." || cell === "o")
+      );
+
+      if (!pelletsLeft) nextLevel();
+    }
+
+    function nextLevel() {
+      level++;
+      score += 500;
+      map = originalMap.map(row => row.split(""));
+      resetActors();
+      updateHud();
+    }
+
+    function actorPosition(actor) {
+      const d = directions[actor.dir];
+      return {
+        x: actor.x + d.x * actor.progress,
+        y: actor.y + d.y * actor.progress
+      };
+    }
+
+    function checkCollisions() {
+      const p = actorPosition(player);
+
+      for (const ghost of ghosts) {
+        const g = actorPosition(ghost);
+        const distance = Math.hypot(p.x - g.x, p.y - g.y);
+
+        if (distance < 0.65) {
+          if (performance.now() < frightenedUntil) {
+            score += 200;
+            ghost.x = ghost.startX;
+            ghost.y = ghost.startY;
+            ghost.progress = 0;
+            updateHud();
+          } else {
+            loseLife();
+          }
+          return;
+        }
+      }
+    }
+
+    function loseLife() {
+      lives--;
+      updateHud();
+
+      if (lives <= 0) {
+        running = false;
+        messageText.textContent = `Fim de jogo - ${score} pontos`;
+        message.classList.add("show");
+      } else {
+        resetActors();
+      }
+    }
+
+    function drawMaze() {
+      ctx.fillStyle = "#02020c";
+      ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          const cell = map[y][x];
+          const px = x * tile;
+          const py = y * tile;
+
+          if (cell === "#") {
+            ctx.fillStyle = "#1537e8";
+            ctx.fillRect(px + 1, py + 1, tile - 2, tile - 2);
+            ctx.strokeStyle = "#5574ff";
+            ctx.lineWidth = Math.max(1, tile * 0.07);
+            ctx.strokeRect(px + 3, py + 3, tile - 6, tile - 6);
+          } else if (cell === "." || cell === "o") {
+            ctx.beginPath();
+            ctx.fillStyle = "#ffe5b2";
+            ctx.arc(
+              px + tile / 2,
+              py + tile / 2,
+              cell === "o" ? tile * 0.18 : tile * 0.06,
+              0,
+              Math.PI * 2
+            );
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    function drawPlayer(time) {
+      const p = actorPosition(player);
+      const cx = (p.x + 0.5) * tile;
+      const cy = (p.y + 0.5) * tile;
+      const radius = tile * 0.4;
+      const mouth = 0.18 + Math.abs(Math.sin(time / 90)) * 0.25;
+
+      const angles = {
+        right: 0,
+        down: Math.PI / 2,
+        left: Math.PI,
+        up: -Math.PI / 2
+      };
+
+      const angle = angles[player.dir];
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, radius, angle + mouth, angle - mouth + Math.PI * 2);
+      ctx.closePath();
+      ctx.fillStyle = player.color;
+      ctx.fill();
+    }
+
+    function drawGhost(ghost, time) {
+      const p = actorPosition(ghost);
+      const x = (p.x + 0.5) * tile;
+      const y = (p.y + 0.5) * tile;
+      const r = tile * 0.38;
+      const frightened = time < frightenedUntil;
+
+      ctx.fillStyle = frightened
+        ? (frightenedUntil - time < 2000 && Math.floor(time / 180) % 2
+            ? "#ffffff"
+            : "#234dff")
+        : ghost.color;
+
+      ctx.beginPath();
+      ctx.arc(x, y, r, Math.PI, 0);
+      ctx.lineTo(x + r, y + r);
+      ctx.lineTo(x + r / 2, y + r * 0.72);
+      ctx.lineTo(x, y + r);
+      ctx.lineTo(x - r / 2, y + r * 0.72);
+      ctx.lineTo(x - r, y + r);
+      ctx.closePath();
+      ctx.fill();
+
+      if (!frightened) {
+        const d = directions[ghost.dir];
+
+        for (const offset of [-r * 0.38, r * 0.38]) {
+          ctx.beginPath();
+          ctx.fillStyle = "white";
+          ctx.arc(x + offset, y - r * 0.15, r * 0.25, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.fillStyle = "#162a88";
+          ctx.arc(
+            x + offset + d.x * r * 0.09,
+            y - r * 0.15 + d.y * r * 0.09,
+            r * 0.11,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+        }
+      }
+    }
+
+    function gameLoop(time) {
+      const dt = Math.min((time - lastTime) / 1000, 0.04);
+      lastTime = time;
+
+      if (running) {
+        moveActor(player, 6.3, dt, true);
+
+        ghosts.forEach((ghost, index) => {
+          const speed = time < frightenedUntil
+            ? 3.5
+            : 4.1 + level * 0.15 + index * 0.05;
+
+          moveActor(ghost, speed, dt);
+        });
+
+        checkCollisions();
+      }
+
+      drawMaze();
+      drawPlayer(time);
+      ghosts.forEach(ghost => drawGhost(ghost, time));
+      requestAnimationFrame(gameLoop);
+    }
+
+    const keyDirections = {
+      ArrowLeft: "left",
+      ArrowRight: "right",
+      ArrowUp: "up",
+      ArrowDown: "down",
+      a: "left",
+      d: "right",
+      w: "up",
+      s: "down"
+    };
+
+    addEventListener("keydown", event => {
+      const direction = keyDirections[event.key] ||
+        keyDirections[event.key.toLowerCase()];
+
+      if (direction) {
+        event.preventDefault();
+        player.nextDir = direction;
       }
     });
 
-    document.querySelectorAll("[data-direcao]").forEach(botao => {
-      botao.addEventListener("click", () => {
-        mudarDirecao(botao.dataset.direcao);
-      });
+    let touchStart = null;
+
+    canvas.addEventListener("pointerdown", event => {
+      touchStart = { x: event.clientX, y: event.clientY };
     });
 
-    document
-      .getElementById("reiniciar")
-      .addEventListener("click", iniciarJogo);
+    canvas.addEventListener("pointerup", event => {
+      if (!touchStart) return;
 
-    iniciarJogo();
+      const dx = event.clientX - touchStart.x;
+      const dy = event.clientY - touchStart.y;
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        player.nextDir = dx > 0 ? "right" : "left";
+      } else {
+        player.nextDir = dy > 0 ? "down" : "up";
+      }
+
+      touchStart = null;
+    });
+
+    document.getElementById("restart").addEventListener("click", newGame);
+    addEventListener("resize", resize);
+
+    resize();
+    newGame();
+    requestAnimationFrame(gameLoop);
   </script>
 </body>
 </html>
