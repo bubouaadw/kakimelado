@@ -1,551 +1,232 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Labirinto Arcade</title>
-  <style>
-    * { box-sizing: border-box; }
-
-    body {
-      min-height: 100vh;
-      margin: 0;
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-      background: radial-gradient(circle, #12174a 0%, #050615 65%);
-      color: white;
-      font-family: Arial, sans-serif;
-      user-select: none;
-    }
-
-    .game {
-      width: min(94vw, 650px);
-      text-align: center;
-    }
-
-    h1 {
-      margin: 0 0 10px;
-      color: #ffe600;
-      font-size: clamp(28px, 6vw, 48px);
-      text-shadow: 0 0 18px #ff9d00;
-    }
-
-    .hud {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
-      font-weight: bold;
-      font-size: clamp(14px, 3vw, 20px);
-    }
-
-    .board {
-      position: relative;
-      width: 100%;
-      aspect-ratio: 19 / 21;
-      background: #02020c;
-      border: 4px solid #243cff;
-      border-radius: 10px;
-      box-shadow: 0 0 24px #172cff;
-      overflow: hidden;
-    }
-
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-      touch-action: none;
-    }
-
-    .message {
-      position: absolute;
-      inset: 0;
-      display: none;
-      place-content: center;
-      padding: 24px;
-      background: rgba(0, 0, 10, .78);
-      font-size: clamp(24px, 6vw, 45px);
-      font-weight: bold;
-      text-shadow: 0 0 12px #000;
-    }
-
-    .message.show { display: grid; }
-
-    button {
-      margin-top: 18px;
-      padding: 12px 24px;
-      border: 0;
-      border-radius: 999px;
-      background: #ffe600;
-      color: #080814;
-      font: inherit;
-      font-size: 18px;
-      font-weight: bold;
-      cursor: pointer;
-      box-shadow: 0 0 15px #ffb300;
-    }
-
-    .help {
-      margin: 12px 0 0;
-      color: #b8c0ff;
-      font-size: 14px;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>Kombate Mortal</title>
+<style>
+  body{margin:0;background:#000;display:flex;flex-direction:column;align-items:center;font-family:Impact,Arial Black,sans-serif;color:#fff}
+  canvas{border:3px solid #600;margin-top:10px;box-shadow:0 0 30px #a00}
+  #info{font-family:Arial;font-size:13px;color:#aaa;margin:8px;text-align:center}
+</style>
 </head>
 <body>
-  <main class="game">
-    <h1>LABIRINTO ARCADE</h1>
+<canvas id="c" width="900" height="500"></canvas>
+<div id="info">
+  <b>P1 (Amarelo):</b> A/D andar · W pular · S defender · F soco · G chute · H especial (bola de fogo)<br>
+  <b>P2 (Azul):</b> ←/→ andar · ↑ pular · ↓ defender · K soco · L chute · J especial<br>
+  <b>T</b> = alternar P2 humano / CPU · <b>Enter</b> = começar / próxima luta
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const W=900,H=500,GROUND=420,GRAV=0.8;
+const keys={},pressed={};
+addEventListener('keydown',e=>{if(!keys[e.code])pressed[e.code]=true;keys[e.code]=true;if(e.code.startsWith('Arrow'))e.preventDefault();});
+addEventListener('keyup',e=>keys[e.code]=false);
 
-    <div class="hud">
-      <span>Placar: <b id="score">0</b></span>
-      <span>Vidas: <b id="lives">3</b></span>
-      <span>Fase: <b id="level">1</b></span>
-    </div>
+let cpu=true,state='menu',timer=99,frame=0,msg='',msgT=0,particles=[],projectiles=[],shake=0,finishMode=false;
+let wins=[0,0];
 
-    <div class="board">
-      <canvas id="canvas"></canvas>
-
-      <div id="message" class="message">
-        <div>
-          <div id="messageText"></div>
-          <button id="restart">Jogar novamente</button>
-        </div>
-      </div>
-    </div>
-
-    <p class="help">Setas ou WASD - no celular, deslize sobre o jogo</p>
-  </main>
-
-  <script>
-    const originalMap = [
-      "###################",
-      "#o.......#.......o#",
-      "#.###.##.#.##.###.#",
-      "#.................#",
-      "#.###.#.###.#.###.#",
-      "#.....#..#..#.....#",
-      "#####.##.#.##.#####",
-      "    #.#.....#.#    ",
-      "#####.#.###.#.#####",
-      "......#.....#......",
-      "#####.#.###.#.#####",
-      "    #.#.....#.#    ",
-      "#####.#.###.#.#####",
-      "#........#........#",
-      "#.###.##.#.##.###.#",
-      "#o..#.........#..o#",
-      "###.#.#.###.#.#.###",
-      "#.....#..#..#.....#",
-      "#.#######.#######.#",
-      "#.................#",
-      "###################"
-    ];
-
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
-    const scoreEl = document.getElementById("score");
-    const livesEl = document.getElementById("lives");
-    const levelEl = document.getElementById("level");
-    const message = document.getElementById("message");
-    const messageText = document.getElementById("messageText");
-
-    const COLS = originalMap[0].length;
-    const ROWS = originalMap.length;
-    const directions = {
-      left:  { x: -1, y: 0 },
-      right: { x: 1, y: 0 },
-      up:    { x: 0, y: -1 },
-      down:  { x: 0, y: 1 }
-    };
-
-    let map, tile, score, lives, level, running;
-    let player, ghosts, lastTime, frightenedUntil;
-
-    function resize() {
-      const board = canvas.parentElement;
-      const rect = board.getBoundingClientRect();
-      canvas.width = Math.floor(rect.width * devicePixelRatio);
-      canvas.height = Math.floor(rect.height * devicePixelRatio);
-      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-      tile = rect.width / COLS;
+class Fighter{
+  constructor(x,color,dark,name,ctrl,facing){
+    Object.assign(this,{startX:x,color,dark,name,ctrl,startFacing:facing});
+    this.reset();
+  }
+  reset(){
+    this.x=this.startX;this.y=GROUND;this.vy=0;this.hp=100;this.facing=this.startFacing;
+    this.action='idle';this.actT=0;this.stun=0;this.block=false;this.cool=0;this.hitDone=false;this.walk=0;this.dead=false;
+  }
+  get onGround(){return this.y>=GROUND}
+  input(opp){
+    if(this.dead||this.stun>0)return;
+    let c=this.ctrl,left,right,up,down,p,k,s;
+    if(c==='ai'){[left,right,up,down,p,k,s]=this.ai(opp);}
+    else{left=keys[c.l];right=keys[c.r];up=keys[c.u];down=keys[c.d];p=pressed[c.p];k=pressed[c.k];s=pressed[c.s];}
+    this.block=down&&this.onGround&&this.action==='idle';
+    if(this.action==='idle'&&!this.block){
+      if(left){this.x-=4.5;this.walk++;}
+      if(right){this.x+=4.5;this.walk++;}
+      if(up&&this.onGround)this.vy=-15;
+      if(p)this.attack('punch');
+      else if(k)this.attack('kick');
+      else if(s&&this.cool<=0)this.attack('special');
     }
-
-    function makeActor(x, y, color, direction = "left") {
-      return {
-        x, y,
-        startX: x,
-        startY: y,
-        dir: direction,
-        nextDir: direction,
-        progress: 0,
-        color
-      };
+  }
+  ai(o){
+    const d=Math.abs(o.x-this.x),toward=o.x>this.x;
+    let l=false,r=false,u=false,dn=false,p=false,k=false,s=false;
+    const rnd=Math.random();
+    if(projectiles.some(pr=>pr.owner!==this&&Math.abs(pr.x-this.x)<160)){ if(rnd<0.5)u=true;else dn=true; }
+    else if(d>230){ if(rnd<0.012&&this.cool<=0)s=true; else {toward?r=true:l=true;} }
+    else if(d>85){ toward?r=true:l=true; if(rnd<0.01)u=true; }
+    else{
+      if(o.action!=='idle'&&rnd<0.4)dn=true;
+      else if(rnd<0.06)p=true;
+      else if(rnd<0.09)k=true;
+      else if(rnd<0.11){toward?l=true:r=true;}
     }
-
-    function resetActors() {
-      player = makeActor(9, 15, "#ffe600", "left");
-      ghosts = [
-        makeActor(9, 9, "#ff355e", "left"),
-        makeActor(8, 9, "#ff8de5", "right"),
-        makeActor(10, 9, "#35e9ff", "left"),
-        makeActor(9, 11, "#ff9f31", "right")
-      ];
-      frightenedUntil = 0;
-    }
-
-    function newGame() {
-      map = originalMap.map(row => row.split(""));
-      score = 0;
-      lives = 3;
-      level = 1;
-      running = true;
-      resetActors();
-      updateHud();
-      message.classList.remove("show");
-      lastTime = performance.now();
-    }
-
-    function updateHud() {
-      scoreEl.textContent = score;
-      livesEl.textContent = lives;
-      levelEl.textContent = level;
-    }
-
-    function isWall(x, y) {
-      if (y < 0 || y >= ROWS) return true;
-      if (x < 0 || x >= COLS) return false;
-      return map[y][x] === "#";
-    }
-
-    function wrap(actor) {
-      if (actor.x < 0) actor.x = COLS - 1;
-      if (actor.x >= COLS) actor.x = 0;
-    }
-
-    function canMove(actor, dirName) {
-      const d = directions[dirName];
-      return !isWall(actor.x + d.x, actor.y + d.y);
-    }
-
-    function moveActor(actor, speed, dt, isPlayer = false) {
-      if (actor.progress === 0) {
-        if (isPlayer && canMove(actor, actor.nextDir)) {
-          actor.dir = actor.nextDir;
-        }
-
-        if (!isPlayer) chooseGhostDirection(actor);
-        if (!canMove(actor, actor.dir)) return;
+    return [l,r,u,dn,p,k,s];
+  }
+  attack(t){this.action=t;this.actT=0;this.hitDone=false;}
+  update(opp){
+    this.input(opp);
+    this.vy+=GRAV;this.y+=this.vy;
+    if(this.y>GROUND){this.y=GROUND;this.vy=0;}
+    this.x=Math.max(40,Math.min(W-40,this.x));
+    if(this.action==='idle'&&!this.dead)this.facing=opp.x>this.x?1:-1;
+    if(this.stun>0)this.stun--;
+    if(this.cool>0)this.cool--;
+    if(this.action!=='idle'){
+      this.actT++;
+      const A={punch:{dur:16,from:5,to:9,range:75,dmg:6},kick:{dur:26,from:10,to:15,range:95,dmg:10},special:{dur:30}}[this.action];
+      if(this.action==='special'&&this.actT===15){
+        projectiles.push({x:this.x+this.facing*50,y:this.y-95,vx:this.facing*9,owner:this,color:this.color});
+        this.cool=100;
       }
-
-      actor.progress += speed * dt;
-
-      while (actor.progress >= 1) {
-        const d = directions[actor.dir];
-        actor.x += d.x;
-        actor.y += d.y;
-        wrap(actor);
-        actor.progress -= 1;
-
-        if (isPlayer) {
-          eatTile();
-
-          if (canMove(actor, actor.nextDir)) {
-            actor.dir = actor.nextDir;
-          }
-        } else {
-          chooseGhostDirection(actor);
-        }
-
-        if (!canMove(actor, actor.dir)) {
-          actor.progress = 0;
-          break;
-        }
+      if(A.range&&!this.hitDone&&this.actT>=A.from&&this.actT<=A.to){
+        const dx=(opp.x-this.x)*this.facing;
+        if(dx>0&&dx<A.range&&Math.abs(opp.y-this.y)<90){this.hitDone=true;hit(opp,A.dmg,this.facing);}
       }
+      if(this.actT>=A.dur)this.action='idle';
     }
+    // empurrar para não sobrepor
+    const dx=opp.x-this.x;
+    if(Math.abs(dx)<50&&Math.abs(opp.y-this.y)<80){const push=(50-Math.abs(dx))/2;this.x-=Math.sign(dx||1)*push;}
+  }
+  draw(){
+    const x=this.x,y=this.y,f=this.facing;
+    ctx.save();ctx.translate(x,y);
+    if(this.dead){ctx.rotate(-f*Math.PI/2);ctx.translate(0,-10);}
+    if(this.stun>0&&frame%4<2)ctx.globalAlpha=0.6;
+    const bob=this.action==='idle'?Math.sin(frame/8)*2:0;
+    const sw=Math.sin(this.walk/5)*12;
+    ctx.lineCap='round';
+    // pernas
+    ctx.strokeStyle=this.dark;ctx.lineWidth=14;
+    line(0,-60,-12+sw*(this.block?0:1),0);
+    if(this.action==='kick'&&this.actT>6&&this.actT<20)line(0,-60,f*85,-80);
+    else line(0,-60,12-sw,0);
+    // corpo
+    ctx.fillStyle=this.color;
+    ctx.fillRect(-18,-125+bob,36,68);
+    ctx.fillStyle=this.dark;ctx.fillRect(-18,-70+bob,36,8); // faixa
+    // braços
+    ctx.strokeStyle=this.color;ctx.lineWidth=11;
+    if(this.block){line(0,-115+bob,f*22,-130);line(0,-105+bob,f*24,-115);}
+    else if(this.action==='punch'&&this.actT>3&&this.actT<11){line(0,-112,f*70,-110);line(0,-108,f*-10,-85);}
+    else if(this.action==='special'&&this.actT>8){line(0,-112,f*55,-100);line(0,-108,f*55,-92);}
+    else{line(0,-112+bob,f*20,-90+bob);line(0,-112+bob,f*-14,-85+bob);}
+    // cabeça (máscara ninja)
+    ctx.fillStyle=this.color;ctx.beginPath();ctx.arc(0,-142+bob,17,0,7);ctx.fill();
+    ctx.fillStyle='#e8b98a';ctx.fillRect(f>0?-2:-15,-148+bob,17,8);
+    ctx.fillStyle=this.dead?'#000':'#fff';ctx.fillRect(f>0?7:-11,-146+bob,5,4);
+    ctx.restore();
+  }
+}
+function line(a,b,c,d){ctx.beginPath();ctx.moveTo(a,b);ctx.lineTo(c,d);ctx.stroke();}
 
-    function chooseGhostDirection(ghost) {
-      const opposite = {
-        left: "right",
-        right: "left",
-        up: "down",
-        down: "up"
-      };
+function hit(t,dmg,dir){
+  if(t.dead)return;
+  if(t.block&&t.facing===-dir){dmg=Math.ceil(dmg/5);t.x+=dir*6;spark(t.x-dir*20,t.y-110,'#ff0',6);}
+  else{t.stun=14;t.action='idle';t.x+=dir*22;blood(t.x,t.y-110,dir,14);shake=8;}
+  if(finishMode){t.dead=true;t.hp=0;blood(t.x,t.y-110,dir,80);shake=25;endRound(t===p1?1:0,true);return;}
+  t.hp=Math.max(0,t.hp-dmg);
+}
+function blood(x,y,dir,n){for(let i=0;i<n;i++)particles.push({x,y,vx:dir*Math.random()*7+(Math.random()-.5)*4,vy:-Math.random()*9,life:60,c:'#b00000',s:3+Math.random()*4});}
+function spark(x,y,c,n){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*8,vy:(Math.random()-.5)*8,life:15,c,s:3});}
 
-      let options = Object.keys(directions).filter(name =>
-        canMove(ghost, name) && name !== opposite[ghost.dir]
-      );
+const p1=new Fighter(220,'#e6c200','#7a6500','ESCORPIÃO DOURADO',{l:'KeyA',r:'KeyD',u:'KeyW',d:'KeyS',p:'KeyF',k:'KeyG',s:'KeyH'},1);
+const p2ctrl={l:'ArrowLeft',r:'ArrowRight',u:'ArrowUp',d:'ArrowDown',p:'KeyK',k:'KeyL',s:'KeyJ'};
+const p2=new Fighter(680,'#2a7fff','#123c80','LOBO DE GELO','ai',-1);
 
-      if (!options.length) {
-        options = Object.keys(directions).filter(name => canMove(ghost, name));
-      }
+function startRound(){p1.reset();p2.reset();projectiles=[];particles=[];timer=99;finishMode=false;state='fight';say('LUTEM!',90);}
+function say(t,d){msg=t;msgT=d;}
+function endRound(winner,fatal){
+  state='over';wins[winner]++;
+  const w=winner===0?p1:p2;
+  say(fatal?'FATALIDADE!':`${w.name} VENCE!`,9999);
+  setTimeout(()=>{if(state==='over')say((fatal?'FATALIDADE! ':'')+`${w.name} VENCE!  [Enter]`,9999);},1500);
+}
 
-      const frightened = performance.now() < frightenedUntil;
-
-      options.sort((a, b) => {
-        const da = distanceAfterMove(ghost, a);
-        const db = distanceAfterMove(ghost, b);
-        return frightened ? db - da : da - db;
-      });
-
-      ghost.dir = Math.random() < 0.7
-        ? options[0]
-        : options[Math.floor(Math.random() * options.length)];
-    }
-
-    function distanceAfterMove(actor, direction) {
-      const d = directions[direction];
-      return Math.hypot(
-        actor.x + d.x - player.x,
-        actor.y + d.y - player.y
-      );
-    }
-
-    function eatTile() {
-      const cell = map[player.y]?.[player.x];
-
-      if (cell === ".") {
-        map[player.y][player.x] = " ";
-        score += 10;
-      } else if (cell === "o") {
-        map[player.y][player.x] = " ";
-        score += 50;
-        frightenedUntil = performance.now() + 7000;
-      }
-
-      updateHud();
-
-      const pelletsLeft = map.some(row =>
-        row.some(cell => cell === "." || cell === "o")
-      );
-
-      if (!pelletsLeft) nextLevel();
-    }
-
-    function nextLevel() {
-      level++;
-      score += 500;
-      map = originalMap.map(row => row.split(""));
-      resetActors();
-      updateHud();
-    }
-
-    function actorPosition(actor) {
-      const d = directions[actor.dir];
-      return {
-        x: actor.x + d.x * actor.progress,
-        y: actor.y + d.y * actor.progress
-      };
-    }
-
-    function checkCollisions() {
-      const p = actorPosition(player);
-
-      for (const ghost of ghosts) {
-        const g = actorPosition(ghost);
-        const distance = Math.hypot(p.x - g.x, p.y - g.y);
-
-        if (distance < 0.65) {
-          if (performance.now() < frightenedUntil) {
-            score += 200;
-            ghost.x = ghost.startX;
-            ghost.y = ghost.startY;
-            ghost.progress = 0;
-            updateHud();
-          } else {
-            loseLife();
-          }
-          return;
-        }
-      }
-    }
-
-    function loseLife() {
-      lives--;
-      updateHud();
-
-      if (lives <= 0) {
-        running = false;
-        messageText.textContent = `Fim de jogo - ${score} pontos`;
-        message.classList.add("show");
-      } else {
-        resetActors();
-      }
-    }
-
-    function drawMaze() {
-      ctx.fillStyle = "#02020c";
-      ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
-
-      for (let y = 0; y < ROWS; y++) {
-        for (let x = 0; x < COLS; x++) {
-          const cell = map[y][x];
-          const px = x * tile;
-          const py = y * tile;
-
-          if (cell === "#") {
-            ctx.fillStyle = "#1537e8";
-            ctx.fillRect(px + 1, py + 1, tile - 2, tile - 2);
-            ctx.strokeStyle = "#5574ff";
-            ctx.lineWidth = Math.max(1, tile * 0.07);
-            ctx.strokeRect(px + 3, py + 3, tile - 6, tile - 6);
-          } else if (cell === "." || cell === "o") {
-            ctx.beginPath();
-            ctx.fillStyle = "#ffe5b2";
-            ctx.arc(
-              px + tile / 2,
-              py + tile / 2,
-              cell === "o" ? tile * 0.18 : tile * 0.06,
-              0,
-              Math.PI * 2
-            );
-            ctx.fill();
-          }
-        }
-      }
-    }
-
-    function drawPlayer(time) {
-      const p = actorPosition(player);
-      const cx = (p.x + 0.5) * tile;
-      const cy = (p.y + 0.5) * tile;
-      const radius = tile * 0.4;
-      const mouth = 0.18 + Math.abs(Math.sin(time / 90)) * 0.25;
-
-      const angles = {
-        right: 0,
-        down: Math.PI / 2,
-        left: Math.PI,
-        up: -Math.PI / 2
-      };
-
-      const angle = angles[player.dir];
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, radius, angle + mouth, angle - mouth + Math.PI * 2);
-      ctx.closePath();
-      ctx.fillStyle = player.color;
-      ctx.fill();
-    }
-
-    function drawGhost(ghost, time) {
-      const p = actorPosition(ghost);
-      const x = (p.x + 0.5) * tile;
-      const y = (p.y + 0.5) * tile;
-      const r = tile * 0.38;
-      const frightened = time < frightenedUntil;
-
-      ctx.fillStyle = frightened
-        ? (frightenedUntil - time < 2000 && Math.floor(time / 180) % 2
-            ? "#ffffff"
-            : "#234dff")
-        : ghost.color;
-
-      ctx.beginPath();
-      ctx.arc(x, y, r, Math.PI, 0);
-      ctx.lineTo(x + r, y + r);
-      ctx.lineTo(x + r / 2, y + r * 0.72);
-      ctx.lineTo(x, y + r);
-      ctx.lineTo(x - r / 2, y + r * 0.72);
-      ctx.lineTo(x - r, y + r);
-      ctx.closePath();
-      ctx.fill();
-
-      if (!frightened) {
-        const d = directions[ghost.dir];
-
-        for (const offset of [-r * 0.38, r * 0.38]) {
-          ctx.beginPath();
-          ctx.fillStyle = "white";
-          ctx.arc(x + offset, y - r * 0.15, r * 0.25, 0, Math.PI * 2);
-          ctx.fill();
-
-          ctx.beginPath();
-          ctx.fillStyle = "#162a88";
-          ctx.arc(
-            x + offset + d.x * r * 0.09,
-            y - r * 0.15 + d.y * r * 0.09,
-            r * 0.11,
-            0,
-            Math.PI * 2
-          );
-          ctx.fill();
-        }
-      }
-    }
-
-    function gameLoop(time) {
-      const dt = Math.min((time - lastTime) / 1000, 0.04);
-      lastTime = time;
-
-      if (running) {
-        moveActor(player, 6.3, dt, true);
-
-        ghosts.forEach((ghost, index) => {
-          const speed = time < frightenedUntil
-            ? 3.5
-            : 4.1 + level * 0.15 + index * 0.05;
-
-          moveActor(ghost, speed, dt);
-        });
-
-        checkCollisions();
-      }
-
-      drawMaze();
-      drawPlayer(time);
-      ghosts.forEach(ghost => drawGhost(ghost, time));
-      requestAnimationFrame(gameLoop);
-    }
-
-    const keyDirections = {
-      ArrowLeft: "left",
-      ArrowRight: "right",
-      ArrowUp: "up",
-      ArrowDown: "down",
-      a: "left",
-      d: "right",
-      w: "up",
-      s: "down"
-    };
-
-    addEventListener("keydown", event => {
-      const direction = keyDirections[event.key] ||
-        keyDirections[event.key.toLowerCase()];
-
-      if (direction) {
-        event.preventDefault();
-        player.nextDir = direction;
-      }
+function update(){
+  frame++;
+  if(pressed.KeyT){cpu=!cpu;p2.ctrl=cpu?'ai':p2ctrl;say(cpu?'P2: CPU':'P2: HUMANO',60);}
+  if(pressed.Enter&&state!=='fight')startRound();
+  if(state==='fight'){
+    p1.update(p2);p2.update(p1);
+    if(frame%60===0&&!finishMode&&timer>0)timer--;
+    projectiles=projectiles.filter(pr=>{
+      pr.x+=pr.vx;
+      const t=pr.owner===p1?p2:p1;
+      if(Math.abs(pr.x-t.x)<35&&Math.abs(pr.y-(t.y-95))<60){hit(t,12,Math.sign(pr.vx));spark(pr.x,pr.y,'#f80',20);return false;}
+      return pr.x>-50&&pr.x<W+50;
     });
-
-    let touchStart = null;
-
-    canvas.addEventListener("pointerdown", event => {
-      touchStart = { x: event.clientX, y: event.clientY };
-    });
-
-    canvas.addEventListener("pointerup", event => {
-      if (!touchStart) return;
-
-      const dx = event.clientX - touchStart.x;
-      const dy = event.clientY - touchStart.y;
-
-      if (Math.abs(dx) > Math.abs(dy)) {
-        player.nextDir = dx > 0 ? "right" : "left";
-      } else {
-        player.nextDir = dy > 0 ? "down" : "up";
+    if(!finishMode){
+      const loser=p1.hp<=0?p1:p2.hp<=0?p2:null;
+      if(loser||timer<=0){
+        const l=loser||(p1.hp<p2.hp?p1:p2);
+        l.hp=0;l.stun=99999;finishMode=true;timer=6;say('ACABE COM ELE!',9999);
       }
+    }else if(frame%60===0){
+      timer--;
+      if(timer<=0){const l=p1.stun>9000?p1:p2;l.dead=true;endRound(l===p1?1:0,false);}
+    }
+  }
+  particles=particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.4;if(p.y>GROUND+5){p.y=GROUND+5;p.vx*=0.5;p.vy=0;}return --p.life>0;});
+  if(shake>0)shake--;
+  if(msgT>0)msgT--;
+  for(const k in pressed)delete pressed[k];
+}
 
-      touchStart = null;
-    });
+function drawBG(){
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#1a0000');g.addColorStop(1,'#4a0a00');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#ff6a00';ctx.globalAlpha=.25;ctx.beginPath();ctx.arc(W/2,170,90,0,7);ctx.fill();ctx.globalAlpha=1;
+  ctx.fillStyle='#120000';
+  for(let i=0;i<9;i++){const x=i*110+20;ctx.fillRect(x,180,30,GROUND-180);ctx.fillRect(x-10,170,50,14);}
+  for(let i=0;i<6;i++){const fx=60+i*160,fy=230;ctx.fillStyle=`hsl(${25+Math.random()*20},100%,55%)`;ctx.beginPath();ctx.ellipse(fx,fy,8,14+Math.random()*6,0,0,7);ctx.fill();}
+  ctx.fillStyle='#2a0d05';ctx.fillRect(0,GROUND,W,H-GROUND);
+  ctx.strokeStyle='#3d1608';for(let i=0;i<W;i+=60)line(i,GROUND,i-40,H);
+}
+function drawHUD(){
+  const bar=(x,hp,flip,name,w)=>{
+    ctx.fillStyle='#300';ctx.fillRect(x,20,350,26);
+    ctx.fillStyle=hp>30?'#0c0':'#d00';
+    const len=350*hp/100;ctx.fillRect(flip?x+350-len:x,20,len,26);
+    ctx.strokeStyle='#fc0';ctx.lineWidth=2;ctx.strokeRect(x,20,350,26);
+    ctx.fillStyle='#fff';ctx.font='18px Impact';ctx.textAlign=flip?'right':'left';
+    ctx.fillText(name,flip?x+350:x,66);
+    ctx.fillStyle='#fc0';ctx.fillText('★'.repeat(w),flip?x+350-ctx.measureText(name).width-10:x+ctx.measureText(name).width+10,66);
+  };
+  bar(20,p1.hp,false,p1.name,wins[0]);bar(530,p2.hp,true,p2.name+(cpu?' (CPU)':''),wins[1]);
+  ctx.fillStyle='#fc0';ctx.font='40px Impact';ctx.textAlign='center';ctx.fillText(timer,W/2,50);
+}
+function drawMsg(t,size,col){
+  ctx.font=size+'px Impact';ctx.textAlign='center';ctx.lineWidth=6;ctx.strokeStyle='#000';
+  ctx.strokeText(t,W/2,H/2-20);ctx.fillStyle=col;ctx.fillText(t,W/2,H/2-20);
+}
 
-    document.getElementById("restart").addEventListener("click", newGame);
-    addEventListener("resize", resize);
-
-    resize();
-    newGame();
-    requestAnimationFrame(gameLoop);
-  </script>
+function render(){
+  ctx.save();
+  if(shake)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+  drawBG();
+  p1.draw();p2.draw();
+  for(const pr of projectiles){
+    ctx.fillStyle=pr.color;ctx.beginPath();ctx.arc(pr.x,pr.y,14,0,7);ctx.fill();
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(pr.x,pr.y,6,0,7);ctx.fill();
+    spark(pr.x-pr.vx,pr.y,pr.color,1);
+  }
+  for(const p of particles){ctx.fillStyle=p.c;ctx.fillRect(p.x,p.y,p.s,p.s);}
+  ctx.restore();
+  if(state==='menu'){
+    ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(0,0,W,H);
+    drawMsg('KOMBATE MORTAL',80,'#d00');
+    ctx.font='24px Impact';ctx.fillStyle='#fc0';ctx.fillText('Pressione ENTER para lutar',W/2,H/2+40);
+  }else{
+    drawHUD();
+    if(msgT>0)drawMsg(msg,msg.length>16?44:64,msg.includes('FATAL')||msg.includes('ACABE')?'#d00':'#fc0');
+  }
+}
+(function loop(){update();render();requestAnimationFrame(loop);})();
+</script>
 </body>
 </html>
